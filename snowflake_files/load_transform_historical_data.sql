@@ -1,0 +1,107 @@
+/*
+================================================================================
+FILE: load_transform_historical_data.sql
+PURPOSE: Transform and load historical pricing data: RAW→CORE→DIM→FACT
+         Using MERGE for idempotent, replayable ETL with deduplication
+PREREQUISITES: init_snowflake_objects.sql must run first; RAW data must exist
+================================================================================
+*/
+
+USE DATABASE SEC_PRICING;
+
+-- Step 1: Verify raw data exists
+SELECT * FROM RAW.RAW_EOD_PRICES LIMIT 10;
+
+-- Step 2: MERGE RAW → CORE (deduplicate, normalize SYMBOL)
+-- Deduplication: ROW_NUMBER() partitioned by (SYMBOL, TRADE_DATE)
+-- keeps latest record (max _INGEST_TS), discards older duplicates
+MERGE INTO CORE.EOD_PRICES AS T
+USING (
+        WITH SRC_RAW AS (
+            SELECT 
+                R.TRADE_DATE,
+                UPPER(TRIM(R.SYMBOL)) AS SYMBOL,   -- Normalize: uppercase + trim
+                R.OPEN, R.LOW, R.HIGH, R.CLOSE, R.VOLUME,
+                R._SRC_FILE, R._INGEST_TS
+            FROM RAW.RAW_EOD_PRICES AS R 
+        ),
+        -- Rank to select latest record per (SYMBOL, TRADE_DATE)
+        RANK_RAW AS (
+            SELECT *,
+            ROW_NUMBER() OVER(PARTITION BY SYMBOL, TRADE_DATE
+                              ORDER BY _SRC_FILE DESC, _INGEST_TS DESC) AS RANK_NO
+            FROM SRC_RAW
+        )
+        SELECT TRADE_DATE, SYMBOL, OPEN, LOW, HIGH, CLOSE, VOLUME
+        FROM RANK_RAW WHERE RANK_NO = 1  -- Keep only latest (RANK_NO=1)
+    ) AS S 
+ON UPPER(TRIM(T.SYMBOL)) = S.SYMBOL AND T.TRADE_DATE = S.TRADE_DATE
+WHEN MATCHED THEN
+  UPDATE SET OPEN = S.OPEN, HIGH = S.HIGH, LOW = S.LOW, CLOSE = S.CLOSE, LOAD_TS = CURRENT_TIMESTAMP()
+WHEN NOT MATCHED THEN 
+    INSERT (TRADE_DATE, SYMBOL, OPEN, LOW, HIGH, CLOSE, VOLUME, LOAD_TS)
+    VALUES (S.TRADE_DATE, S.SYMBOL, S.OPEN, S.LOW, S.HIGH, S.CLOSE, S.VOLUME, CURRENT_TIMESTAMP());
+
+-- Step 3: Verify CORE data
+SELECT * FROM CORE.EOD_PRICES LIMIT 10;
+
+-- Step 4: MERGE CORE → DIM_SECURITY (populate dimension with unique symbols)
+-- One row per unique SYMBOL; SECURITY_ID auto-generated
+MERGE INTO DM_DIM.DIM_SECURITY AS T 
+USING (SELECT DISTINCT SYMBOL FROM CORE.EOD_PRICES ORDER BY SYMBOL) AS S
+ON T.SYMBOL = S.SYMBOL     
+WHEN NOT MATCHED THEN INSERT(SYMBOL) VALUES (S.SYMBOL);
+
+-- Step 5: MERGE CORE → DIM_DATE (populate date dimension with temporal attributes)
+-- One row per unique TRADE_DATE; pre-computes YEAR, MONTH, QUARTER, DAY_OF_WEEK, IS_WEEKEND
+MERGE INTO DM_DIM.DIM_DATE d
+USING (
+  SELECT DISTINCT
+    TO_NUMBER(TO_CHAR(e.TRADE_DATE, 'YYYYMMDD')) AS DATE_SK,  -- yyyymmdd format
+    e.TRADE_DATE AS CAL_DATE,
+    EXTRACT(YEAR FROM e.TRADE_DATE) AS YEAR_NUM,
+    EXTRACT(QUARTER FROM e.TRADE_DATE) AS QUARTER_NUM,
+    EXTRACT(MONTH FROM e.TRADE_DATE) AS MONTH_NUM,
+    MONTHNAME(e.TRADE_DATE) AS MONTH_NAME,
+    EXTRACT(DAY FROM e.TRADE_DATE) AS DAY_NUM,
+    DAYNAME(e.TRADE_DATE) AS DAY_NAME,
+    EXTRACT(DAYOFWEEK FROM e.TRADE_DATE) AS DAY_OF_WEEK,  -- 0=Sun, 6=Sat
+    EXTRACT(WEEK FROM e.TRADE_DATE) AS WEEK_OF_YEAR,
+    IFF(EXTRACT(DAYOFWEEK FROM e.TRADE_DATE) IN (0,6), TRUE, FALSE) AS IS_WEEKEND
+  FROM CORE.EOD_PRICES e ORDER BY DATE_SK
+) s
+ON d.DATE_SK = s.DATE_SK
+WHEN NOT MATCHED THEN
+  INSERT (DATE_SK, CAL_DATE, YEAR_NUM, QUARTER_NUM, MONTH_NUM, MONTH_NAME, 
+          DAY_NUM, DAY_NAME, DAY_OF_WEEK, WEEK_OF_YEAR, IS_WEEKEND)
+  VALUES (s.DATE_SK, s.CAL_DATE, s.YEAR_NUM, s.QUARTER_NUM, s.MONTH_NUM, 
+          s.MONTH_NAME, s.DAY_NUM, s.DAY_NAME, s.DAY_OF_WEEK, s.WEEK_OF_YEAR, s.IS_WEEKEND);
+
+-- Step 6: Verify date dimension
+SELECT Count(*) FROM SEC_PRICING.DM_DIM.DIM_DATE;
+SELECT * FROM SEC_PRICING.DM_DIM.DIM_DATE;
+
+-- Step 7: MERGE (CORE + DIM_SECURITY + DIM_DATE) → FACT_DAILY_PRICE
+-- Grain: (SECURITY_ID, DATE_SK); one row per security-date pair
+-- Joins dimensions to get surrogate keys, then populates fact table
+MERGE INTO DM_FACT.FACT_DAILY_PRICE AS F
+USING (
+    SELECT 
+        DS.SECURITY_ID,                                    -- FK to DIM_SECURITY
+        TO_NUMBER(TO_CHAR(E.TRADE_DATE, 'YYYYMMDD')) DATE_SK,  -- FK to DIM_DATE
+        E.TRADE_DATE, E.OPEN, E.LOW, E.HIGH, E.CLOSE, E.VOLUME
+    FROM CORE.EOD_PRICES E
+    JOIN DM_DIM.DIM_SECURITY DS ON E.SYMBOL = DS.SYMBOL
+    JOIN DM_DIM.DIM_DATE DD ON DD.DATE_SK = TO_NUMBER(TO_CHAR(E.TRADE_DATE, 'YYYYMMDD'))
+) AS SRC 
+ON F.DATE_SK = SRC.DATE_SK AND F.SECURITY_ID = SRC.SECURITY_ID
+WHEN MATCHED THEN
+    UPDATE SET TRADE_DATE = SRC.TRADE_DATE, OPEN = SRC.OPEN, HIGH = SRC.HIGH, 
+              LOW = SRC.LOW, CLOSE = SRC.CLOSE, VOLUME = SRC.VOLUME, LOAD_TS = CURRENT_TIMESTAMP()
+WHEN NOT MATCHED THEN
+    INSERT (SECURITY_ID, DATE_SK, TRADE_DATE, OPEN, HIGH, LOW, CLOSE, VOLUME, LOAD_TS)
+    VALUES (SRC.SECURITY_ID, SRC.DATE_SK, SRC.TRADE_DATE, SRC.OPEN, SRC.HIGH, SRC.LOW, SRC.CLOSE, SRC.VOLUME, CURRENT_TIMESTAMP());
+
+-- Step 8: Validate fact table
+SELECT COUNT(*) FROM DM_FACT.FACT_DAILY_PRICE;
+SELECT * FROM DM_FACT.FACT_DAILY_PRICE;
