@@ -1,0 +1,201 @@
+# ============================================================================
+# ENVIRONMENT & CREDENTIALS (NEVER COMMIT!)
+# ============================================================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+credentials.json
+secrets.yaml
+
+
+# ============================================================================
+# AIRFLOW SPECIFIC
+# ============================================================================
+airflow.db
+airflow-webserver.pid
+airflow-scheduler.pid
+airflow/logs/*
+airflow/plugins/__pycache__/
+airflow_settings.yaml
+unittests.cfg
+
+
+# ============================================================================
+# DATA FILES (Generated at runtime - DO NOT COMMIT!)
+# ============================================================================
+# Downloaded CSV files from API
+/tmp/
+/tmp/eod_*.csv
+data/
+data/raw/
+data/raw/*.csv
+data/processed/
+data/backup/
+data/backup/*.csv
+
+# Historical data (manually uploaded to Snowflake)
+/historical_load/
+/historical_load/*.csv
+/historical_load/*.parquet
+massive_eod_grouped_*.csv
+
+
+# ============================================================================
+# PYTHON CACHE & VIRTUAL ENVIRONMENTS
+# ============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+
+# ============================================================================
+# IDE & EDITOR
+# ============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+
+# ============================================================================
+# LOGS & MONITORING
+# ============================================================================
+logs/
+*.log
+*.log.*
+/logs/*
+
+
+# ============================================================================
+# DOCKER & CONTAINERS
+# ============================================================================
+.dockerignore
+docker-compose.override.yml
+
+
+# ============================================================================
+# DATABASE & TEMPORARY FILES
+# ============================================================================
+*.db
+*.sqlite
+*.sqlite3
+*.tmp
+*.temp
+
+
+# ============================================================================
+# AWS S3 & CLOUD (Local sync copies - regeneratable)
+# ============================================================================
+# Don't commit local copies of S3 files
+s3_sync/
+s3_downloads/
+*.s3
+
+
+# ============================================================================
+# AIRFLOW DAGS SPECIFIC
+# ============================================================================
+# Dynamic DAG generated files
+dags/__pycache__/
+dags/*.pyc
+
+
+# ============================================================================
+# NOTEBOOKS (if using Jupyter)
+# ============================================================================
+.ipynb_checkpoints/
+*.ipynb
+.jupyter/
+
+
+# ============================================================================
+# MACOS
+# ============================================================================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+
+# ============================================================================
+# WINDOWS
+# ============================================================================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+
+# ============================================================================
+# OS BACKUP FILES
+# ============================================================================
+*.bak
+*.backup
+*.orig
+*~
+
+
+# ============================================================================
+# KEEP THESE (DO COMMIT!)
+# ============================================================================
+# SQL scripts - YES, commit these!
+!sql/
+!sql/*.sql
+
+# DAG files - YES, commit these!
+!dags/
+!dags/*.py
+
+# Library code - YES, commit these!
+!lib/
+!lib/*.py
+
+# Configuration templates - YES, commit these!
+!config/
+!config/*.yaml
+
+# Documentation - YES, commit these!
+!README.md
+!docs/
+
+# Requirements - YES, commit these!
+!requirements.txt
+!constraints.txt
+
+# .gitkeep files for empty directories
+!.gitkeep

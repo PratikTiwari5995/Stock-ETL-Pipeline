@@ -30,13 +30,15 @@ def get_stock_prices(req_date):
 
 
 def extract_historical_data():
-    os.makedirs("data/raw", exist_ok=True)
+    # Use os.path.join for cross-platform paths (Windows, Mac, Linux)
+    output_dir = os.path.join("data", "raw")
+    os.makedirs(output_dir, exist_ok=True)
     
     start_date = dt.date(year=2026, month=4, day=9)
     end_date = dt.date(year=2026, month=4, day=16)
 
     out_file = os.path.join(
-        "data/raw",
+        output_dir,
         f"massive_eod_grouped_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.csv"
     )
 
