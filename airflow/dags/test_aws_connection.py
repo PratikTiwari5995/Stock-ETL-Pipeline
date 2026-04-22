@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 with DAG(
     dag_id="test_aws_conn",
     description="Simple DAG to verify AWS S3 connection credentials",
-    start_date=datetime(2025, 1, 1),
+    start_date=datetime(2026, 1, 1),
     schedule=None,
     catchup=False,
     tags=["aws", "s3", "connection", "test"],
