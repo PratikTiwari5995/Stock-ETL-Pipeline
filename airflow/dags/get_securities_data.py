@@ -20,6 +20,7 @@ from airflow.providers.snowflake.operators.snowflake import SnowflakeCheckOperat
 from lib.eod_data_downloader import (
     download_massive_eod_data_to_csv,
 )  
+from lib.slack_utils import slack_post, on_task_failure
 
 import logging
 
@@ -47,6 +48,7 @@ with DAG(
     max_active_runs=1,
     default_args=DEFAULT_ARGS,
     tags=["massive", "batch", "securities"],
+    on_failure_callback=on_task_failure,
     description="Massive-Only batch eod: Downloda and process the latest avilable trading date",
     template_searchpath=TEMPLATE_SEARCHPATH,
 ):
@@ -152,3 +154,44 @@ with DAG(
         replace=True,  # Replace the file if it already exists in S3
     )
     download >> verify_file >> upload_file >> snowflake_load
+
+    def notify_slack_summary(**ctx):
+        """
+        Sends a summary message to Slack at the end of the DAG.
+        Pulls metrics from pre/post merge tasks and posts a compact summary.
+        """
+        trading_date = ctx["ti"].xcom_pull(task_ids="t01_download_to_csv", key="trading_date")
+        pre = ctx["ti"].xcom_pull(task_ids="t04_snowflake_load.s03_compute_premerge_metrics") or []
+        post = ctx["ti"].xcom_pull(task_ids="t04_snowflake_load.s08_compute_postmerge_metrics") or []
+
+        raw_cnt = ins_est = upd_est = core_ds = fact_ds = 0
+
+        # pre = [(raw_cnt, core_existing_cnt, ins_est, upd_est)]
+        if pre and len(pre[0]) >= 4:
+            raw_cnt, reject_cnt, ins_est, upd_est = pre[0]
+
+        # post = [(core_rows, fact_rows)]
+        if post and len(post[0]) >= 2:
+            core_ds, fact_ds = post[0]
+
+        msg = (
+                ":white_check_mark: *EOD Summary*\n"
+                f"• Trading Date: `{trading_date}`\n"
+                f"• RAW rows: `{int(raw_cnt):,}`\n"
+                f"• Reject rows: `{int(reject_cnt):,}`\n"
+                f"• Estimated CORE inserts: `{int(ins_est):,}`\n"
+                f"• Estimated CORE updates: `{int(upd_est):,}`\n"
+                f"• CORE rows after merge: `{int(core_ds):,}`\n"
+                f"• FACT rows after merge: `{int(fact_ds):,}`"
+            )
+        slack_post(msg)
+
+
+    slack_summary = PythonOperator(
+        task_id="t05_notify_slack_summary",
+        python_callable=notify_slack_summary,
+        trigger_rule="all_done",   # ensure Slack fires even if an upstream task failed/skipped
+    )
+
+
+    snowflake_load >> slack_summary
