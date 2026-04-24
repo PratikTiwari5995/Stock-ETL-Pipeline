@@ -1,4 +1,4 @@
-﻿# 📊 EOD Securities Pricing Analytics Platform
+# 📊 EOD Securities Pricing Analytics Platform
 
 > **End-to-End Data Engineering Pipeline for Real-Time Securities Market Analytics**
 
@@ -15,7 +15,7 @@ This platform automates the complete lifecycle of EOD securities data:
 3. **Stage** - Upload to AWS S3 for reliable storage
 4. **Transform** - Process through 4-layer Snowflake warehouse
 5. **Analyze** - Generate BI-ready views for trading insights
-6. **Alert** - Send real-time notifications via Microsoft Teams
+6. **Alert** - Send real-time notifications via Slack
 
 **Business Impact:**
 - ✅ Eliminated 100% of manual CSV collection
@@ -41,7 +41,7 @@ This platform automates the complete lifecycle of EOD securities data:
 │  │ • Download from API                     │   │
 │  │ • Verify CSV files                      │   │
 │  │ • Upload to S3 (Bronze)                 │   │
-│  │ • Alert DAGs (Teams notifications)      │   │
+│  │ • Alert DAGs (Slack notifications)      │   │
 │  └─────────────────────────────────────────┘   │
 └────────┬─────────────────────────────────────────┘
          │
@@ -71,7 +71,7 @@ This platform automates the complete lifecycle of EOD securities data:
                     ┌──────────┴──────────┐
                     ▼                     ▼
             ┌──────────────────┐   ┌──────────────┐
-            │    Power BI      │   │ Teams Alerts │
+            │    Power BI      │   │ Slack Alerts │
             │  Dashboards      │   │  Monitoring  │
             │  6 Reports       │   │  On Failure  │
             └──────────────────┘   └──────────────┘
@@ -95,7 +95,7 @@ eod-securities-analytics/
 │   │   ├── test_*.py                      # Connection test DAGs
 │   │   ├── lib/
 │   │   │   ├── eod_data_downloader.py     # Massive API client
-│   │   │   └── slack_utils.py             # Teams notification utils
+│   │   │   └── slack_utils.py             # Slack notification utils
 │   │   └── sql/                           # Snowflake transformation scripts
 │   │       ├── copy_to_raw.sql
 │   │       ├── merge_core.sql
@@ -161,7 +161,7 @@ Task 4: Snowflake Transformation (TaskGroup)
 └─ s08_postmerge_metrics → Validate transformation
 
 Task 5: Send Success Alert
-└─ Notify Teams channel with metrics
+└─ Notify Slack channel with metrics
 ```
 
 ---
@@ -206,7 +206,7 @@ Task 5: Send Success Alert
 - Apache Airflow + Docker (orchestration)
 - AWS S3 (staging layer)
 - Snowflake (data warehouse with RAW/CORE/DIM/FACT/SA layers)
-- Microsoft Teams (alerts)
+- Slack (alerts)
 - Power BI (analytics & reporting)
 
 ---
@@ -218,7 +218,7 @@ Task 5: Send Success Alert
 - Snowflake account (free tier supported)
 - AWS S3 bucket & IAM credentials
 - Massive Stock Market API key
-- Microsoft Teams channel for alerts
+- Slack channel for alerts
 
 ### 1. Clone & Setup
 
@@ -233,7 +233,7 @@ cp .env.example .env
 # - MASSIVE_API_KEY
 # - SNOWFLAKE_USER, SNOWFLAKE_PASSWORD, SNOWFLAKE_ACCOUNT
 # - AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET
-# - TEAMS_WEBHOOK_URL
+# - SLACK_WEBHOOK_URL
 ```
 
 ### 2. Start Airflow
@@ -274,10 +274,10 @@ airflow connections add aws_default \
   --conn-login <access-key-id> \
   --conn-password <secret-access-key>
 
-# Teams Connection
-airflow connections add teams_default \
-  --conn-type generic \
-  --conn-host https://outlook.webhook.office.com/webhookb2/ \
+# Slack Connection
+airflow connections add slack_default \
+  --conn-type slack_webhook \
+  --conn-host https://hooks.slack.com/services/ \
   --conn-password <webhook-url-suffix>
 ```
 
@@ -352,8 +352,8 @@ AWS_ACCESS_KEY_ID=<key>
 AWS_SECRET_ACCESS_KEY=<secret>
 S3_BUCKET=eod-securities-data-airflow
 
-# Teams
-TEAMS_WEBHOOK_URL=<webhook-url>
+# Slack
+SLACK_WEBHOOK_URL=<webhook-url>
 
 # Airflow
 AIRFLOW__CORE__LOAD_EXAMPLES=false
@@ -396,7 +396,7 @@ venv/
 | **Data Warehouse** | Snowflake | Cloud |
 | **Cloud Storage** | AWS S3 | - |
 | **BI & Analytics** | Power BI | Latest |
-| **Alerting** | Microsoft Teams | - |
+| **Alerting** | Slack | - |
 | **Data Source** | Massive API | v2 |
 
 ---
@@ -422,7 +422,6 @@ venv/
 
 ---
 
-
 ### Common Issues
 
 **DAG Import Timeout**
@@ -435,9 +434,9 @@ venv/
 - Check credentials in Airflow UI
 - Verify network access
 
-**Teams Alert Not Sending**
+**Slack Alert Not Sending**
 - Test webhook URL in browser
-- Verify Teams connection in Airflow
+- Verify Slack connection in Airflow
 - Check channel permissions
 
 
@@ -454,7 +453,7 @@ venv/
 - ✅ Data Warehouse (Snowflake 4-layer)
 - ✅ Analytics Views (6 SA layer views)
 - ✅ BI Dashboards (Power BI)
-- ✅ Alerting (Microsoft Teams)
+- ✅ Alerting (Slack)
 - ✅ Error Handling & Retries
 - ✅ Monitoring & Logging
 - ✅ Production Ready
@@ -469,3 +468,4 @@ venv/
 4. Add cost optimization (Snowflake clustering)
 5. Enable row-level security in Power BI
 6. Expand to additional asset classes (bonds, commodities)
+
